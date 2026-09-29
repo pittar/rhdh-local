@@ -49,12 +49,26 @@ commands:
     exec:
       component: tools
       commandLine: |
-        if [ -n "$DEVWORKSPACE_ENDPOINT_RHDH_ROUTE_URL" ]; then
-          echo "Syncing Dev Spaces route URL to .env: $DEVWORKSPACE_ENDPOINT_RHDH_ROUTE_URL"
+        echo "Discovering dynamic OpenShift Route for RHDH..."
+        ROUTE_HOST=$(oc get route -l controller.devfile.io/endpoint_name=rhdh-route -o jsonpath='{.items[0].spec.host}' 2>/dev/null)
+        
+        # Fallback to port matching if label query is empty
+        if [ -z "$ROUTE_HOST" ]; then
+          ROUTE_HOST=$(oc get route -o jsonpath='{.items[?(@.spec.port.targetPort==7007)].spec.host}' 2>/dev/null)
+        fi
+
+        if [ -n "$ROUTE_HOST" ]; then
+          DYNAMIC_URL="https://${ROUTE_HOST}"
+          echo "Discovered URL: ${DYNAMIC_URL}"
+          
           if [ ! -f .env ]; then
             cp default.env .env
           fi
-          sed -i "s|^BASE_URL=.*|BASE_URL=${DEVWORKSPACE_ENDPOINT_RHDH_ROUTE_URL}|" .env
+          
+          sed -i "s|^BASE_URL=.*|BASE_URL=${DYNAMIC_URL}|" .env
+          echo ".env successfully updated."
+        else
+          echo "Could not resolve OpenShift Route yet. Run 'oc get route' manually."
         fi
 events:
   postStart:
