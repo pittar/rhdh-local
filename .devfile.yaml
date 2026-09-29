@@ -1,0 +1,63 @@
+schemaVersion: 2.2.2
+attributes:
+  controller.devfile.io/storage-type: per-workspace
+metadata:
+  name: "rhdh-local"
+  provider: Red Hat
+  displayName: RHDH Local
+  description: RHDH Local in Dev Spaces
+  tags:
+    - RHDH
+    - Podman
+    - Local
+  projectType: RHDH
+  language: YAML
+components:
+  - name: tools
+    container:
+      image: quay.io/devfile/universal-developer-image:ubi9-latest
+      args: ['tail', '-f', '/dev/null']
+      mountSources: true
+      cpuLimit: '4'
+      cpuRequest: '500m'
+      memoryLimit: '8G'
+      memoryRequest: '2G'
+      endpoints:
+        - name: rhdh-route
+          targetPort: 7007
+          exposure: public
+          secure: true
+commands:
+  - id: install-podman-compose
+    exec:
+      component: tools
+      commandLine: |
+        if [ ! -f ~/.docker/cli-plugins/docker-compose ]; then
+          echo "Installing docker-compose CLI plugin..."
+          mkdir -p ~/.docker/cli-plugins
+          curl -sSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" -o ~/.docker/cli-plugins/docker-compose
+          chmod +x ~/.docker/cli-plugins/docker-compose
+          echo "docker-compose plugin installation complete."
+        else
+          echo "docker-compose CLI plugin already exists, skipping download."
+        fi
+  - id: start-podman-service
+    exec:
+      commandLine: "podman system service --time 0 &"
+      component: tools
+  - id: sync-env-url
+    exec:
+      component: tools
+      commandLine: |
+        if [ -n "$DEVWORKSPACE_ENDPOINT_RHDH_ROUTE_URL" ]; then
+          echo "Syncing Dev Spaces route URL to .env: $DEVWORKSPACE_ENDPOINT_RHDH_ROUTE_URL"
+          if [ ! -f .env ]; then
+            cp default.env .env
+          fi
+          sed -i "s|^BASE_URL=.*|BASE_URL=${DEVWORKSPACE_ENDPOINT_RHDH_ROUTE_URL}|" .env
+        fi
+events:
+  postStart:
+    - install-podman-compose
+    - start-podman-service
+    - sync-env-url
