@@ -64,8 +64,10 @@ commands:
   - id: sync-env-url
     exec:
       component: tools
+      workingDir: ${PROJECT_SOURCE}
       commandLine: |
-        echo "Waiting for dynamic OpenShift Route for RHDH..."
+        # Ensure we are operating inside the repository root
+        cd "${PROJECT_SOURCE:-/projects}"
         
         # Always initialize .env from default.env if missing
         if [ -f default.env ] && [ ! -f .env ]; then
