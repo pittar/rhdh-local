@@ -34,7 +34,7 @@ commands:
       component: tools
   - id: podman-compose-down
     exec:
-      commandLine: "podman compose -f compose-devspaces.yaml down -d"
+      commandLine: "podman compose -f compose-devspaces.yaml down"
       component: tools
   - id: podman-compose-start
     exec:
