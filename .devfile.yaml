@@ -28,6 +28,22 @@ components:
           exposure: public
           secure: true
 commands:
+  - id: podman-compose-up
+    exec:
+      commandLine: "podman compose -f compose-devspaces.yaml up -d"
+      component: tools
+  - id: podman-compose-down
+    exec:
+      commandLine: "podman compose -f compose-devspaces.yaml down -d"
+      component: tools
+  - id: podman-compose-start
+    exec:
+      commandLine: "podman compose start"
+      component: tools
+  - id: podman-compose-stop
+    exec:
+      commandLine: "podman compose stop"
+      component: tools
   - id: install-podman-compose
     exec:
       component: tools
@@ -49,26 +65,42 @@ commands:
     exec:
       component: tools
       commandLine: |
-        echo "Discovering dynamic OpenShift Route for RHDH..."
-        ROUTE_HOST=$(oc get route -l controller.devfile.io/endpoint_name=rhdh-route -o jsonpath='{.items[0].spec.host}' 2>/dev/null)
+        echo "Waiting for dynamic OpenShift Route for RHDH..."
         
-        # Fallback to port matching if label query is empty
-        if [ -z "$ROUTE_HOST" ]; then
-          ROUTE_HOST=$(oc get route -o jsonpath='{.items[?(@.spec.port.targetPort==7007)].spec.host}' 2>/dev/null)
+        # Always initialize .env from default.env if missing
+        if [ -f default.env ] && [ ! -f .env ]; then
+          cp default.env .env
+          echo "Initialized .env from default.env"
         fi
+
+        # Poll for the OpenShift Route (up to 30 seconds)
+        MAX_RETRIES=15
+        COUNT=0
+        ROUTE_HOST=""
+
+        while [ $COUNT -lt $MAX_RETRIES ]; do
+          ROUTE_HOST=$(oc get route -l controller.devfile.io/endpoint_name=rhdh-route -o jsonpath='{.items[0].spec.host}' 2>/dev/null)
+          
+          if [ -z "$ROUTE_HOST" ]; then
+            ROUTE_HOST=$(oc get route -o jsonpath='{.items[?(@.spec.port.targetPort==7007)].spec.host}' 2>/dev/null)
+          fi
+
+          if [ -n "$ROUTE_HOST" ]; then
+            break
+          fi
+
+          COUNT=$((COUNT + 1))
+          echo "Route not ready yet... retry $COUNT/$MAX_RETRIES"
+          sleep 2
+        done
 
         if [ -n "$ROUTE_HOST" ]; then
           DYNAMIC_URL="https://${ROUTE_HOST}"
           echo "Discovered URL: ${DYNAMIC_URL}"
-          
-          if [ ! -f .env ]; then
-            cp default.env .env
-          fi
-          
           sed -i "s|^BASE_URL=.*|BASE_URL=${DYNAMIC_URL}|" .env
           echo ".env successfully updated."
         else
-          echo "Could not resolve OpenShift Route yet. Run 'oc get route' manually."
+          echo "WARNING: OpenShift Route was not found within timeout. Check 'oc get route' manually."
         fi
 events:
   postStart:
