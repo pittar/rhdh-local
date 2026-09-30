@@ -66,25 +66,38 @@ commands:
       component: tools
       workingDir: ${PROJECT_SOURCE}
       commandLine: |
-        # Ensure we are operating inside the repository root
         cd "${PROJECT_SOURCE:-/projects}"
+
+        echo "Waiting for dynamic OpenShift Route for RHDH..."
         
-        # Always initialize .env from default.env if missing
+        # 1. Initialize .env from default.env if missing
         if [ -f default.env ] && [ ! -f .env ]; then
           cp default.env .env
           echo "Initialized .env from default.env"
         fi
 
-        # Poll for the OpenShift Route (up to 30 seconds)
-        MAX_RETRIES=15
+        # 2. Determine current OpenShift namespace from service account
+        NAMESPACE=""
+        if [ -f /var/run/secrets/kubernetes.io/serviceaccount/namespace ]; then
+          NAMESPACE=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+        fi
+
+        NS_ARG=""
+        if [ -n "$NAMESPACE" ]; then
+          echo "Operating in namespace: ${NAMESPACE}"
+          NS_ARG="-n ${NAMESPACE}"
+        fi
+
+        # 3. Poll for the OpenShift Route
+        MAX_RETRIES=20
         COUNT=0
         ROUTE_HOST=""
 
         while [ $COUNT -lt $MAX_RETRIES ]; do
-          ROUTE_HOST=$(oc get route -l controller.devfile.io/endpoint_name=rhdh-route -o jsonpath='{.items[0].spec.host}' 2>/dev/null)
+          ROUTE_HOST=$(oc get route ${NS_ARG} -l controller.devfile.io/endpoint_name=rhdh-route -o jsonpath='{.items[0].spec.host}' 2>/dev/null)
           
           if [ -z "$ROUTE_HOST" ]; then
-            ROUTE_HOST=$(oc get route -o jsonpath='{.items[?(@.spec.port.targetPort==7007)].spec.host}' 2>/dev/null)
+            ROUTE_HOST=$(oc get route ${NS_ARG} -o jsonpath='{.items[?(@.spec.port.targetPort==7007)].spec.host}' 2>/dev/null)
           fi
 
           if [ -n "$ROUTE_HOST" ]; then
@@ -99,10 +112,12 @@ commands:
         if [ -n "$ROUTE_HOST" ]; then
           DYNAMIC_URL="https://${ROUTE_HOST}"
           echo "Discovered URL: ${DYNAMIC_URL}"
-          sed -i "s|^BASE_URL=.*|BASE_URL=${DYNAMIC_URL}|" .env
-          echo ".env successfully updated."
+          if [ -f .env ]; then
+            sed -i "s|^BASE_URL=.*|BASE_URL=${DYNAMIC_URL}|" .env
+            echo ".env successfully updated with ${DYNAMIC_URL}"
+          fi
         else
-          echo "WARNING: OpenShift Route was not found within timeout. Check 'oc get route' manually."
+          echo "WARNING: OpenShift Route was not found within timeout."
         fi
 events:
   postStart:
