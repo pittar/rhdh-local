@@ -5,7 +5,7 @@ services:
 
   db:
     container_name: db
-    image: "registry.access.redhat.com/rhel9/postgresql-16:latest"
+    image: "quay.io/sclorg/postgresql-16-c9s:latest"
     volumes:
       - "/var/lib/pgsql/data"
     env_file:
