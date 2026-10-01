@@ -44,6 +44,13 @@ commands:
     exec:
       commandLine: "podman compose stop"
       component: tools
+  - id: podman-cleanup
+    exec:
+      component: tools
+      commandLine: |
+        pkill -f "podman system service"
+        podman system prune -af --volumes
+        podman system service --time 0 &
   - id: install-podman-compose
     exec:
       component: tools
@@ -123,4 +130,3 @@ events:
   postStart:
     - install-podman-compose
     - start-podman-service
-    - sync-env-url
